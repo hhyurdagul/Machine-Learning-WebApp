@@ -10,7 +10,8 @@ num = st.number_input("Number of Forecasts", min_value=1)
 if st.button("Submit"):
     ts_pipe = Timeseries(files, num, test_file)
     ts_pipe.forecast()
-    st.pyplot(ts_pipe.plot_prediction())
+    col1, col2 = st.columns([3,1])
+    col1.pyplot(ts_pipe.plot_prediction())
     loss = ts_pipe.get_loss()
     if loss is not None:
-        st.dataframe(loss)
+        col2.write(loss)

@@ -1,12 +1,11 @@
 import os
 import json
 import numpy as np
+import pandas as pd
 from pickle import load as pickle_load
 from keras.models import load_model
 from sklearn.metrics import mean_squared_error, mean_absolute_error
 import matplotlib.pyplot as plt
-
-
 
 def loss(y_true, y_pred, seasons=1):
     NMSE = round((((y_true - y_pred) ** 2) / (y_true.mean() * y_pred.mean())).mean(), 2)
@@ -36,7 +35,10 @@ class Timeseries:
         last_values_file = files[names.index("last_values.npy")]
         lags_file = files[names.index("lags.npy")]
         self.forecast_num = forecast_num
-        self.test_file = test_file
+        if test_file.name.endswith(".csv"):
+            self.test_file = pd.read_csv(test_file)
+        else:
+            self.test_file = pd.read_excel(test_file)
 
         with open("model.h5", "wb") as model_path:
             model_path.write(model_h5_file.getvalue())
@@ -112,14 +114,15 @@ class Timeseries:
     
     def plot_prediction(self):
         fig, ax = plt.subplots()
-        ax.plot(self.pred, label=["Prediction"])
-        if self.test_file:
+        if self.test_file is not []:
             y_test = self.test_file[self.label_name]
             y_test = np.asarray(y_test)[:self.forecast_num]
+            ax.plot(y_test, label=["Real"])
+        ax.plot(self.pred, label=["Prediction"])
         return fig
     
     def get_loss(self):
-        if self.test_file:
+        if self.test_file is not []:
             y_test = self.test_file[self.label_name]
             y_test = np.asarray(y_test)[:self.forecast_num]
 

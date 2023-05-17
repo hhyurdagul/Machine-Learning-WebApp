@@ -1,3 +1,4 @@
+import io
 import os
 import json
 import numpy as np
@@ -6,6 +7,7 @@ from pickle import load as pickle_load
 from keras.models import load_model
 from sklearn.metrics import mean_squared_error, mean_absolute_error
 import matplotlib.pyplot as plt
+
 
 def loss(y_true, y_pred, seasons=1):
     NMSE = round((((y_true - y_pred) ** 2) / (y_true.mean() * y_pred.mean())).mean(), 2)
@@ -82,7 +84,6 @@ class Timeseries:
                 else:
                     data[i] = data[i] + fill_values[(len(fill_values) - interval) + i]
 
-
     def forecast(self):
         input_value = self.last
         steps, features = input_value.shape[0], input_value.shape[1]
@@ -111,21 +112,33 @@ class Timeseries:
             self.pred = self.pred.clip(0, None)
         if self.is_round:
             self.pred = np.round(self.pred).astype(int)
-    
+
     def plot_prediction(self):
         fig, ax = plt.subplots()
         if self.test_file is not []:
             y_test = self.test_file[self.label_name]
-            y_test = np.asarray(y_test)[:self.forecast_num]
+            y_test = np.asarray(y_test)[: self.forecast_num]
             ax.plot(y_test, label=["Real"])
         ax.plot(self.pred, label=["Prediction"])
         return fig
-    
+
     def get_loss(self):
         if self.test_file is not []:
             y_test = self.test_file[self.label_name]
-            y_test = np.asarray(y_test)[:self.forecast_num]
+            y_test = np.asarray(y_test)[: self.forecast_num]
 
             return dict(
                 zip(["NMSE", "RMSE", "MAE", "MAPE", "SMAPE"], loss(y_test, self.pred))
             )
+
+
+def renew_last_values(lag_file, data, scaler):
+    old_lags = np.load(lag_file)
+    data = data.iloc[-len(old_lags) :].values
+    if scaler is not None:
+        scaler = pickle_load(scaler)
+        data = scaler.transform(data.reshape(-1, 1)).ravel()
+
+    buffer = io.BytesIO()
+    np.save(buffer, data)
+    return buffer

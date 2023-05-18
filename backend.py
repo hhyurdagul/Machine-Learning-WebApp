@@ -131,6 +131,7 @@ class Timeseries:
                 zip(["NMSE", "RMSE", "MAE", "MAPE", "SMAPE"], loss(y_test, self.pred))
             )
 
+
 class Supervised:
     def __init__(self, files, forecast_num, test_file):
         names = [i.name for i in files]
@@ -139,17 +140,17 @@ class Supervised:
 
         self.forecast_num = forecast_num
         if test_file.name.endswith(".csv"):
-            self.test_file = pd.read_csv(test_file)
+            self.test_df = pd.read_csv(test_file)
         else:
-            self.test_file = pd.read_excel(test_file)
-        
+            self.test_df = pd.read_excel(test_file)
+
         with open("model.joblib", "wb") as model_path:
             model_path.write(model_joblib_file.getvalue())
         self.model = joblib_load("model.joblib")
         os.remove("model.joblib")
 
         params = json.load(model_json_file)
-        
+
         self.scale_type = params.get("scale_type")
         if self.scale_type != "None":
             self.feature_scaler = pickle_load(files[names.index("feature_scaler.pkl")])
@@ -164,15 +165,127 @@ class Supervised:
 
         self.seasonal_lookback_option = params.get("seasonal_lookback_option", 0)
         if self.seasonal_lookback_option == 1:
-            self.seasonal_period= params.get("seasonal_period", 0)
-            self.seasonal_val = params.get("seasonal_value", 0)
-            seasonal_last_values_file = files[names.index("last_values.npy")]
+            self.seasonal_period = params.get("seasonal_period", 0)
+            self.seasonal_value = params.get("seasonal_value", 0)
+            seasonal_last_values_file = files[names.index("seasonal_last_values.npy")]
             self.seasonal_last = np.load(seasonal_last_values_file)
 
         self.predictor_names = params["predictor_names"]
         self.label_name = params["label_name"]
         self.is_round = params.get("is_round", True)
         self.is_negative = params.get("is_negative", False)
+
+    def forecastLookback(
+        self, num, lookback=0, seasons=0, seasonal_lookback=0, sliding=-1
+    ):
+        pred = []
+        if sliding == 0:
+            last = self.last
+            for i in range(num):
+                X_test = self.test_df[self.predictor_names].iloc[i]
+                if self.scale_type != "None":
+                    X_test.iloc[:] = self.feature_scaler.transform(
+                        X_test.values.reshape(1, -1)
+                    ).reshape(-1)
+                for j in range(1, lookback + 1):
+                    X_test[f"t-{j}"] = last[-j]
+                to_pred = X_test.to_numpy().reshape(1, -1)
+                out = self.model.predict(to_pred)
+                last = np.append(last, out)[-lookback:]
+                pred.append(out)
+
+        elif sliding == 1:
+            seasonal_last = self.seasonal_last
+            for i in range(num):
+                X_test = self.test_df[self.predictor_names].iloc[i]
+                if self.scale_type != "None":
+                    X_test.iloc[:] = self.feature_scaler.transform(
+                        X_test.values.reshape(1, -1)
+                    ).reshape(-1)
+                for j in range(1, seasons + 1):
+                    X_test[f"t-{j*seasonal_last}"] = seasonal_last[
+                        -j * seasonal_lookback
+                    ]
+                to_pred = X_test.to_numpy().reshape(1, -1)
+                out = self.model.predict(to_pred)
+                seasonal_last = np.append(seasonal_last, out)[1:]
+                pred.append(out)
+
+        elif sliding == 2:
+            last = self.last
+            seasonal_last = self.seasonal_last
+            for i in range(num):
+                X_test = self.test_df[self.predictor_names].iloc[i]
+                if self.scale_type != "None":
+                    X_test.iloc[:] = self.feature_scaler.transform(
+                        X_test.values.reshape(1, -1)
+                    ).reshape(-1)
+                for j in range(1, lookback + 1):
+                    X_test[f"t-{j}"] = last[-j]
+                for j in range(1, seasons + 1):
+                    X_test[f"t-{j*seasonal_lookback}"] = seasonal_last[
+                        -j * seasonal_lookback
+                    ]
+                to_pred = X_test.to_numpy().reshape(1, -1)
+                out = self.model.predict(to_pred)
+                last = np.append(last, out)[-lookback:]
+                seasonal_last = np.append(seasonal_last, out)[1:]
+                pred.append(out)
+
+        return np.array(pred).reshape(-1)
+
+    def forecast(self):
+        num = self.forecast_num
+        lookback_option = self.lookback_option
+        seasonal_lookback_option = self.seasonal_lookback_option
+        X_test = self.test_df[self.predictor_names][:num].to_numpy()
+
+        if lookback_option == 0 and seasonal_lookback_option == 0:
+            if self.scale_type != "None":
+                X_test = self.feature_scaler.transform(X_test)
+            self.pred = self.model.predict(X_test).reshape(-1)
+        else:
+            sliding = self.sliding
+            lookback = self.lookback_value
+            seasonal_lookback = self.seasonal_value
+            seasons = self.seasonal_period
+
+            self.pred = self.forecastLookback(
+                num, lookback, seasons, seasonal_lookback, sliding
+            )
+
+        if self.scale_type != "None":
+            self.pred = self.label_scaler.inverse_transform(
+                self.pred.reshape(-1, 1)
+            ).reshape(-1)
+
+        if not self.is_negative:
+            self.pred = self.pred.clip(0, None)
+        if self.is_round:
+            self.pred = np.round(self.pred).astype(int)
+
+    def plot_prediction(self):
+        fig, ax = plt.subplots()
+        if self.label_name in self.test_df:
+            y_test = (
+                self.test_df[self.label_name].iloc[:self.forecast_num]
+                .to_numpy()
+                .reshape(-1)
+            )
+            ax.plot(y_test, label=["Real"])
+        ax.plot(self.pred, label=["Prediction"])
+        return fig
+
+    def get_loss(self):
+        if self.label_name in self.test_df:
+            y_test = (
+                self.test_df[self.label_name].iloc[:self.forecast_num]
+                .to_numpy()
+                .reshape(-1)
+            )
+            return dict(
+                zip(["NMSE", "RMSE", "MAE", "MAPE", "SMAPE"], loss(y_test, self.pred))
+            )
 
 def renew_last_values(lag_file, data, scaler):
     old_lags = np.load(lag_file)

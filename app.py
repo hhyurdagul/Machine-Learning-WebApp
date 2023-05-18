@@ -1,11 +1,13 @@
-from backend import Timeseries, renew_last_values
+from backend import Timeseries, Supervised, renew_last_values
 
 import streamlit as st
 import pandas as pd
 
 st.set_page_config(page_title="Forecasting App")
 
-selected = st.sidebar.radio("Select the modeling type", ["Timeseries", "Renew Lags"])
+selected = st.sidebar.radio(
+    "Select the modeling type", ["Timeseries", "Supervised", "Renew Lags"]
+)
 
 if selected == "Timeseries":
     files = st.file_uploader("Select Model Files", accept_multiple_files=True)
@@ -14,11 +16,23 @@ if selected == "Timeseries":
     if st.button("Submit"):
         ts_pipe = Timeseries(files, num, test_file)
         ts_pipe.forecast()
-        col1, col2 = st.columns([3,1])
+        col1, col2 = st.columns([3, 1])
         col1.pyplot(ts_pipe.plot_prediction())
         loss = ts_pipe.get_loss()
         if loss is not None:
             col2.write(loss)
+
+elif selected == "Supervised":
+    files = st.file_uploader("Select Model Files", accept_multiple_files=True)
+    test_file = st.file_uploader("Upload Test File (Necessary)")
+    num = st.number_input("Number of Forecasts", min_value=1)
+    if st.button("Submit"):
+        ts_pipe = Supervised(files, num, test_file)
+        ts_pipe.forecast()
+        col1, col2 = st.columns([3, 1])
+        col1.pyplot(ts_pipe.plot_prediction())
+        loss = ts_pipe.get_loss()
+        col2.write(loss)
 
 elif selected == "Renew Lags":
     col1, col2 = st.columns(2)

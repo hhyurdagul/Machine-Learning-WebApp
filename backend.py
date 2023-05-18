@@ -4,6 +4,7 @@ import json
 import numpy as np
 import pandas as pd
 from pickle import load as pickle_load
+from joblib import load as joblib_load
 from keras.models import load_model
 from sklearn.metrics import mean_squared_error, mean_absolute_error
 import matplotlib.pyplot as plt
@@ -48,7 +49,6 @@ class Timeseries:
         os.remove("model.h5")
 
         params = json.load(model_json_file)
-        self.params = params
         self.last = np.load(last_values_file)
         self.lags = np.load(lags_file)
 
@@ -131,6 +131,48 @@ class Timeseries:
                 zip(["NMSE", "RMSE", "MAE", "MAPE", "SMAPE"], loss(y_test, self.pred))
             )
 
+class Supervised:
+    def __init__(self, files, forecast_num, test_file):
+        names = [i.name for i in files]
+        model_joblib_file = files[names.index("model.joblib")]
+        model_json_file = files[names.index("model.json")]
+
+        self.forecast_num = forecast_num
+        if test_file.name.endswith(".csv"):
+            self.test_file = pd.read_csv(test_file)
+        else:
+            self.test_file = pd.read_excel(test_file)
+        
+        with open("model.joblib", "wb") as model_path:
+            model_path.write(model_joblib_file.getvalue())
+        self.model = joblib_load("model.joblib")
+        os.remove("model.joblib")
+
+        params = json.load(model_json_file)
+        
+        self.scale_type = params.get("scale_type")
+        if self.scale_type != "None":
+            self.feature_scaler = pickle_load(files[names.index("feature_scaler.pkl")])
+            self.label_scaler = pickle_load(files[names.index("label_scaler.pkl")])
+
+        self.sliding = params.get("sliding", -1)
+        self.lookback_option = params.get("lookback_option", 0)
+        if self.lookback_option:
+            self.lookback_value = params.get("lookback_value", 0)
+            last_values_file = files[names.index("last_values.npy")]
+            self.last = np.load(last_values_file)
+
+        self.seasonal_lookback_option = params.get("seasonal_lookback_option", 0)
+        if self.seasonal_lookback_option == 1:
+            self.seasonal_period= params.get("seasonal_period", 0)
+            self.seasonal_val = params.get("seasonal_value", 0)
+            seasonal_last_values_file = files[names.index("last_values.npy")]
+            self.seasonal_last = np.load(seasonal_last_values_file)
+
+        self.predictor_names = params["predictor_names"]
+        self.label_name = params["label_name"]
+        self.is_round = params.get("is_round", True)
+        self.is_negative = params.get("is_negative", False)
 
 def renew_last_values(lag_file, data, scaler):
     old_lags = np.load(lag_file)

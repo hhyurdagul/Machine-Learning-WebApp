@@ -287,12 +287,48 @@ class Supervised:
                 zip(["NMSE", "RMSE", "MAE", "MAPE", "SMAPE"], loss(y_test, self.pred))
             )
 
-def renew_last_values(lag_file, data, scaler):
-    old_lags = np.load(lag_file)
-    data = data.iloc[-len(old_lags) :].values
+def renew_last_values(params, data, scaler):
+    lag = int(params["lag_number"].split(",")[-1])+1
+    data = data.iloc[-lag:].values
     if scaler is not None:
         scaler = pickle_load(scaler)
-        data = scaler.transform(data.reshape(-1, 1)).ravel()
+        data = scaler.transform(data.reshape(-1, 1))
+
+    buffer = io.BytesIO()
+    np.save(buffer, data)
+    return buffer
+
+def renew_lookback_values(params, data, scaler):
+    sliding = params.get("sliding", -1)
+    lookback_value = params.get("lookback_value", 0)
+    seasonal_value = params.get("seasonal_value", 0)
+
+    if sliding == 0:
+        data = data.iloc[-lookback_value:].values
+    elif sliding == 1:
+        return None
+    elif sliding == 2:
+        data = data[-(lookback_value + seasonal_value) : -seasonal_value]
+
+    if scaler is not None:
+        scaler = pickle_load(scaler)
+        data = scaler.transform(data.reshape(-1, 1))
+
+    buffer = io.BytesIO()
+    np.save(buffer, data)
+    return buffer
+
+def renew_seasonal_lookback_values(params, data, scaler):
+    sliding = params.get("sliding", -1)
+    seasonal_value = params.get("seasonal_value", 0)
+    seasonal_period = params.get("seasonal_period", 0)
+
+    if sliding == 0:
+        return None
+    data = data[-seasonal_value * seasonal_period :]
+    if scaler is not None:
+        scaler = pickle_load(scaler)
+        data = scaler.transform(data.reshape(-1, 1))
 
     buffer = io.BytesIO()
     np.save(buffer, data)

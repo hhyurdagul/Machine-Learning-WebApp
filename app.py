@@ -6,6 +6,7 @@ from backend import (
     renew_seasonal_lookback_values,
 )
 
+
 import streamlit as st
 import pandas as pd
 import json
@@ -30,22 +31,26 @@ if selected == "Timeseries":
         ts_pipe = Timeseries(files, num, test_file)
         ts_pipe.forecast()
         col1, col2 = st.columns([3, 1])
-        col1.pyplot(ts_pipe.plot_prediction())
+        df, fig = ts_pipe.plot_prediction()
+        col1.pyplot(fig)
+        col2.dataframe(df)
         loss = ts_pipe.get_loss()
         if loss is not None:
-            col2.write(loss)
+            st.write(loss)
 
 elif selected == "Supervised":
     files = st.file_uploader("Select Model Files", accept_multiple_files=True)
     test_file = st.file_uploader("Upload Test File (Necessary)")
     num = st.number_input("Number of Forecasts", min_value=1)
     if st.button("Submit"):
-        ts_pipe = Supervised(files, num, test_file)
-        ts_pipe.forecast()
+        sv_pipe = Supervised(files, num, test_file)
+        sv_pipe.forecast()
         col1, col2 = st.columns([3, 1])
-        col1.pyplot(ts_pipe.plot_prediction())
-        loss = ts_pipe.get_loss()
-        col2.write(loss)
+        df, fig = sv_pipe.plot_prediction()
+        col1.pyplot(fig)
+        col2.dataframe(df)
+        loss = sv_pipe.get_loss()
+        st.write(loss)
 
 elif selected == "Renew Lags":
     col1, col2 = st.columns(2)

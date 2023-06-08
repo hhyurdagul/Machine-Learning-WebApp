@@ -38,10 +38,12 @@ class Timeseries:
         last_values_file = files[names.index("last_values.npy")]
         lags_file = files[names.index("lags.npy")]
         self.forecast_num = forecast_num
-        if test_file.name.endswith(".csv"):
-            self.test_file = pd.read_csv(test_file)
-        else:
-            self.test_file = pd.read_excel(test_file)
+        self.test_file = test_file
+        if self.test_file is not None:
+            if self.test_file.name.endswith(".csv"):
+                self.test_data = pd.read_csv(self.test_file)
+            else:
+                self.test_data = pd.read_excel(self.test_file)
 
         with open("model.h5", "wb") as model_path:
             model_path.write(model_h5_file.getvalue())
@@ -112,19 +114,26 @@ class Timeseries:
             self.pred = self.pred.clip(0, None)
         if self.is_round:
             self.pred = np.round(self.pred).astype(int)
+        
+        self.pred = self.pred.round(2).ravel()
+
 
     def plot_prediction(self):
         fig, ax = plt.subplots()
-        if self.test_file is not []:
-            y_test = self.test_file[self.label_name]
+        df = pd.DataFrame(
+            data=self.pred, columns=["Predict"], index=range(1, len(self.pred) + 1)
+        )
+        if self.test_file is not None:
+            y_test = self.test_data[self.label_name]
             y_test = np.asarray(y_test)[: self.forecast_num]
             ax.plot(y_test, label=["Real"])
+            df["Real"] = y_test
         ax.plot(self.pred, label=["Prediction"])
-        return fig
+        return df, fig
 
     def get_loss(self):
-        if self.test_file is not []:
-            y_test = self.test_file[self.label_name]
+        if self.test_file is not None:
+            y_test = self.test_data[self.label_name]
             y_test = np.asarray(y_test)[: self.forecast_num]
 
             return dict(
@@ -264,22 +273,30 @@ class Supervised:
         if self.is_round:
             self.pred = np.round(self.pred).astype(int)
 
+        self.pred = self.pred.round(2).ravel()
+
     def plot_prediction(self):
         fig, ax = plt.subplots()
+        df = pd.DataFrame(
+            data=self.pred, columns=["Predict"], index=range(1, len(self.pred) + 1)
+        )
         if self.label_name in self.test_df:
             y_test = (
-                self.test_df[self.label_name].iloc[:self.forecast_num]
+                self.test_df[self.label_name]
+                .iloc[: self.forecast_num]
                 .to_numpy()
                 .reshape(-1)
             )
             ax.plot(y_test, label=["Real"])
+            df["Real"] = y_test
         ax.plot(self.pred, label=["Prediction"])
-        return fig
+        return df, fig
 
     def get_loss(self):
         if self.label_name in self.test_df:
             y_test = (
-                self.test_df[self.label_name].iloc[:self.forecast_num]
+                self.test_df[self.label_name]
+                .iloc[: self.forecast_num]
                 .to_numpy()
                 .reshape(-1)
             )
@@ -287,8 +304,9 @@ class Supervised:
                 zip(["NMSE", "RMSE", "MAE", "MAPE", "SMAPE"], loss(y_test, self.pred))
             )
 
+
 def renew_last_values(params, data, scaler):
-    lag = int(params["lag_number"].split(",")[-1])+1
+    lag = int(params["lag_number"].split(",")[-1]) + 1
     data = data.iloc[-lag:].values
     if scaler is not None:
         scaler = pickle_load(scaler)
@@ -297,6 +315,7 @@ def renew_last_values(params, data, scaler):
     buffer = io.BytesIO()
     np.save(buffer, data)
     return buffer
+
 
 def renew_lookback_values(params, data, scaler):
     sliding = params.get("sliding", -1)
@@ -317,6 +336,7 @@ def renew_lookback_values(params, data, scaler):
     buffer = io.BytesIO()
     np.save(buffer, data)
     return buffer
+
 
 def renew_seasonal_lookback_values(params, data, scaler):
     sliding = params.get("sliding", -1)

@@ -1,9 +1,6 @@
-import io
-import os
 import json
 import numpy as np
 import pandas as pd
-from pickle import load as pickle_load
 from joblib import load as joblib_load
 from keras.models import load_model
 from sklearn.metrics import mean_squared_error, mean_absolute_error
@@ -140,10 +137,11 @@ class Timeseries:
 
 
 class Supervised:
-    def __init__(self, files, forecast_num, test_file):
-        names = [i.name for i in files]
-        model_joblib_file = files[names.index("model.joblib")]
-        model_json_file = files[names.index("model.json")]
+    def __init__(self, forecast_num, test_file):
+        base_path = "SupervisedModel"
+        model_joblib_file = f"{base_path}/model.joblib"
+        model_json_file = f"{base_path}/model.json"
+        last_values_file = f"{base_path}/last_values.npy"
 
         self.forecast_num = forecast_num
         if test_file.name.endswith(".csv"):
@@ -151,30 +149,28 @@ class Supervised:
         else:
             self.test_df = pd.read_excel(test_file)
 
-        with open("model.joblib", "wb") as model_path:
-            model_path.write(model_joblib_file.getvalue())
-        self.model = joblib_load("model.joblib")
-        os.remove("model.joblib")
+        self.model = joblib_load(model_joblib_file)
 
-        params = json.load(model_json_file)
+        with open(model_json_file) as f:
+            params = json.loads(f.read())
 
         self.scale_type = params.get("scale_type")
         if self.scale_type != "None":
-            self.feature_scaler = pickle_load(files[names.index("feature_scaler.pkl")])
-            self.label_scaler = pickle_load(files[names.index("label_scaler.pkl")])
+            self.feature_scaler = joblib_load(f"{base_path}/feature_scaler.pkl")
+            self.label_scaler = joblib_load(f"{base_path}/label_scaler.pkl")
 
         self.sliding = params.get("sliding", -1)
         self.lookback_option = params.get("lookback_option", 0)
         if self.lookback_option:
             self.lookback_value = params.get("lookback_value", 0)
-            last_values_file = files[names.index("last_values.npy")]
+            last_values_file = f"{base_path}/last_values.npy"
             self.last = np.load(last_values_file)
 
         self.seasonal_lookback_option = params.get("seasonal_lookback_option", 0)
         if self.seasonal_lookback_option == 1:
             self.seasonal_period = params.get("seasonal_period", 0)
             self.seasonal_value = params.get("seasonal_value", 0)
-            seasonal_last_values_file = files[names.index("seasonal_last_values.npy")]
+            seasonal_last_values_file = f"{base_path}/seasonal_last_values.npy"
             self.seasonal_last = np.load(seasonal_last_values_file)
 
         self.predictor_names = params["predictor_names"]
@@ -303,19 +299,26 @@ class Supervised:
             )
 
 
-def renew_last_values(params, data, scaler):
+def renew_last_values(data):
+    base_path = "TimeseriesModel"
+    model_json_file = f"{base_path}/model.json"
+    with open(model_json_file) as f:
+        params = json.loads(f.read())
+    
     lag = int(params["lag_number"].split(",")[-1]) + 1
     data = data.iloc[-lag:].values
-    if scaler is not None:
-        scaler = pickle_load(scaler)
+    scale_type = params.get("scale_type")
+    if scale_type != "None":
+        scaler = joblib_load(f"{base_path}/label_scaler.pkl")
         data = scaler.transform(data.reshape(-1, 1))
 
-    buffer = io.BytesIO()
-    np.save(buffer, data)
-    return buffer
+    np.save(f"{base_path}/last_values.npy", data)
 
-
-def renew_lookback_values(params, data, scaler):
+def renew_lookback_values(data):
+    base_path = "SupervisedModel"
+    model_json_file = f"{base_path}/model.json"
+    with open(model_json_file) as f:
+        params = json.loads(f.read())
     sliding = params.get("sliding", -1)
     lookback_value = params.get("lookback_value", 0)
     seasonal_value = params.get("seasonal_value", 0)
@@ -325,29 +328,32 @@ def renew_lookback_values(params, data, scaler):
     elif sliding == 1:
         return None
     elif sliding == 2:
-        data = data[-(lookback_value + seasonal_value) : -seasonal_value]
-
-    if scaler is not None:
-        scaler = pickle_load(scaler)
+        data = data[-(lookback_value + seasonal_value) : -seasonal_value].values
+    
+    scale_type = params.get("scale_type")
+    if scale_type != "None":
+        scaler = joblib_load(f"{base_path}/label_scaler.pkl")
         data = scaler.transform(data.reshape(-1, 1))
 
-    buffer = io.BytesIO()
-    np.save(buffer, data)
-    return buffer
+    np.save(f"{base_path}/last_values.npy", data)
 
 
-def renew_seasonal_lookback_values(params, data, scaler):
+def renew_seasonal_lookback_values(data):
+    base_path = "SupervisedModel"
+    model_json_file = f"{base_path}/model.json"
+    with open(model_json_file) as f:
+        params = json.loads(f.read())
     sliding = params.get("sliding", -1)
     seasonal_value = params.get("seasonal_value", 0)
     seasonal_period = params.get("seasonal_period", 0)
 
     if sliding == 0:
         return None
-    data = data[-seasonal_value * seasonal_period :]
-    if scaler is not None:
-        scaler = pickle_load(scaler)
-        data = scaler.transform(data.reshape(-1, 1))
+    data = data[-seasonal_value * seasonal_period :].values
 
-    buffer = io.BytesIO()
-    np.save(buffer, data)
-    return buffer
+    scale_type = params.get("scale_type")
+    if scale_type != "None":
+        scaler = joblib_load(f"{base_path}/label_scaler.pkl")
+        data = scaler.transform(data.reshape(-1, 1))
+    
+    np.save(f"{base_path}/seasonal_last_values.npy", data)

@@ -9,7 +9,6 @@ from backend import (
 
 import streamlit as st
 import pandas as pd
-import json
 
 st.set_page_config(page_title="Forecasting App")
 
@@ -38,11 +37,10 @@ if selected == "Timeseries":
             st.write(loss)
 
 elif selected == "Supervised":
-    files = st.file_uploader("Select Model Files", accept_multiple_files=True)
     test_file = st.file_uploader("Upload Test File (Necessary)")
     num = st.number_input("Number of Forecasts", min_value=1)
     if st.button("Submit"):
-        sv_pipe = Supervised(files, num, test_file)
+        sv_pipe = Supervised(num, test_file)
         sv_pipe.forecast()
         col1, col2 = st.columns([3, 1])
         df, fig = sv_pipe.plot_prediction()
@@ -53,8 +51,6 @@ elif selected == "Supervised":
 
 elif selected == "Renew Lags":
     col1, col2 = st.columns(2)
-    json_file = col1.file_uploader("Upload model json file")
-    scaler = col2.file_uploader("Upload label scaler (If exists)")
     data = col1.file_uploader("Upload new data")
     if data is not None:
         if data.name.endswith(".csv"):
@@ -67,15 +63,11 @@ elif selected == "Renew Lags":
 
     if st.button("Submit"):
         data = data[col]
-        params = json.load(json_file)
-        buffer = renew_last_values(params, data, scaler)
-        st.download_button("Download", buffer, file_name="last_values.npy")
-        buffer.close()
+        renew_last_values(data)
+        st.write("Renewed Lags")
 
 elif selected == "Renew Lookback":
     col1, col2 = st.columns(2)
-    json_file = col1.file_uploader("Upload model json file")
-    scaler = col2.file_uploader("Upload label scaler (If exists)")
     data = col1.file_uploader("Upload new data")
     if data is not None:
         if data.name.endswith(".csv"):
@@ -88,19 +80,6 @@ elif selected == "Renew Lookback":
 
     if st.button("Submit"):
         data = data[col]
-        params = json.load(json_file)
-        lookback_buffer = renew_lookback_values(params, data.copy(), scaler)
-        if lookback_buffer is not None:
-            st.download_button(
-                "Download Lookback", lookback_buffer, file_name="last_values.npy"
-            )
-            lookback_buffer.close()
-
-        s_lookback_buffer = renew_seasonal_lookback_values(params, data.copy(), scaler)
-        if s_lookback_buffer is not None:
-            st.download_button(
-                "Download Seasonal Lookback",
-                s_lookback_buffer,
-                file_name="seasonal_last_values.npy",
-            )
-            s_lookback_buffer.close()
+        renew_lookback_values(data.copy())
+        renew_seasonal_lookback_values(data.copy())
+        st.write("Renewed Lookbacks")

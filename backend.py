@@ -31,12 +31,12 @@ def loss(y_true, y_pred, seasons=1):
 
 
 class Timeseries:
-    def __init__(self, files, forecast_num, test_file=None):
-        names = [i.name for i in files]
-        model_h5_file = files[names.index("model.h5")]
-        model_json_file = files[names.index("model.json")]
-        last_values_file = files[names.index("last_values.npy")]
-        lags_file = files[names.index("lags.npy")]
+    def __init__(self, forecast_num, test_file=None):
+        base_path = "TimeseriesModel"
+        model_h5_file = f"{base_path}/model.h5"
+        model_json_file = f"{base_path}/model.json"
+        last_values_file = f"{base_path}/last_values.npy"
+        lags_file = f"{base_path}/lags.npy"
         self.forecast_num = forecast_num
         self.test_file = test_file
         if self.test_file is not None:
@@ -45,29 +45,27 @@ class Timeseries:
             else:
                 self.test_data = pd.read_excel(self.test_file)
 
-        with open("model.h5", "wb") as model_path:
-            model_path.write(model_h5_file.getvalue())
-        self.model = load_model("model.h5")
-        os.remove("model.h5")
+        self.model = load_model(model_h5_file)
 
-        params = json.load(model_json_file)
+        with open(model_json_file) as f:
+            params = json.loads(f.read())
         self.last = np.load(last_values_file)
         self.lags = np.load(lags_file)
 
         self.scale_type = params.get("scale_type")
         if self.scale_type != "None":
-            self.feature_scaler = pickle_load(files[names.index("feature_scaler.pkl")])
-            self.label_scaler = pickle_load(files[names.index("label_scaler.pkl")])
+            self.feature_scaler = joblib_load(f"{base_path}/feature_scaler.pkl")
+            self.label_scaler = joblib_load(f"{base_path}/label_scaler.pkl")
 
         self.difference_choice = params.get("difference_choice", 0)
         if self.difference_choice == 1:
             self.interval = params["interval"]
-            self.fill_values = np.load(files[names.index("fill.npy")])
+            self.fill_values = np.load(f"{base_path}/fill.npy")
 
         self.s_difference_choice = params.get("second_difference_choice", 0)
         if self.s_difference_choice == 1:
             self.s_interval = params["second_interval"]
-            self.s_fill_values = np.load(files[names.index("s_fill.npy")])
+            self.s_fill_values = np.load(f"{base_path}/s_fill.npy")
 
         self.predictor_names = params["predictor_names"]
         self.label_name = params["label_name"]
